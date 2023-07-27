@@ -132,6 +132,12 @@ def scrape_match(url_record_list):
     thread_conn = MongoClient("localhost", 27017)
     thread_db = thread_conn["val-db"]
 
+    # mongo collections
+    match_collection = thread_db.matches
+    player_collection = thread_db.players
+    game_collection = thread_db.games
+    thread_link_collection = thread_db.links
+
     out = []
     for url_record in url_record_list:
         # try statement helps identify which url caused an error, prints the stack trace and saves the html for inspection
@@ -162,7 +168,7 @@ def scrape_match(url_record_list):
 
                 # get the date the match took place
                 date = match_info_col.find(attrs={"class":"match-header-date"}).find(attrs={"class":"moment-tz-convert"})
-                match_info["date"] = date["data-utc-ts"] if date is not None else ''
+                match_info["date"] = datetime.datetime.strptime(date["data-utc-ts"], "%Y-%m-%d %H:%M:%S") if date is not None else ''
 
                 # get the patch number
                 patch = match_info_col.find(string=re.compile("Patch"))
@@ -189,7 +195,7 @@ def scrape_match(url_record_list):
                     match_info["team_2_name"] = strings[0].strip()
 
                 # insert match_info into db
-                match_entry = thread_db.matches.insert_one(match_info)
+                match_entry = match_collection.insert_one(match_info)
 
                 # get the area containing the player stats
                 match_stats = match_info_col.find(attrs={"class":"vm-stats-container"}).findAll(attrs={"data-game-id":True})
@@ -225,7 +231,7 @@ def scrape_match(url_record_list):
 
                         # insert game info into db
                         game_info["match"] = match_entry.inserted_id
-                        game_entry = thread_db.games.insert_one(game_info)
+                        game_entry = game_collection.insert_one(game_info)
 
                         # players and performance
                         boards = item.findAll("table")
@@ -233,16 +239,16 @@ def scrape_match(url_record_list):
                         # team 1 players
                         for player in team_stats_from_board(boards[0], 1):
                             player["game"] = game_entry.inserted_id
-                            thread_db.players.insert_one(player)
+                            player_collection.insert_one(player)
                         
                         # team 2 players
                         for player in team_stats_from_board(boards[1], 2):
                             player["game"] = game_entry.inserted_id
-                            thread_db.players.insert_one(player)
+                            player_collection.insert_one(player)
 
                     except:
                         continue
-                    thread_db.links.update_one({"_id": url_record["_id"]}, {"$set": {"visited": 1, "visited_at": datetime.datetime.now()}})
+                    thread_link_collection.update_one({"_id": url_record["_id"]}, {"$set": {"visited": 1, "visited_at": datetime.datetime.now()}})
                     out.append(True)
 
         except:
@@ -256,11 +262,14 @@ def scrape_match(url_record_list):
 
 if __name__ == "__main__":
     start = datetime.datetime.now()
+    print(f"Started at {start}")
 
     # make main connection to get list of links
     main_conn = MongoClient("localhost", 27017)
     main_db = main_conn["val-db"]
-    urls = list(main_db.links.find({"visited":0}, projection={"url":True}))
+    main_link_collection = main_db.links
+
+    urls = list(main_link_collection.find({"visited":0}, projection={"url":True}))
 
     # create Pool for using different threads
     downloader_pool = Pool(6)
@@ -272,7 +281,7 @@ if __name__ == "__main__":
     print(f"Couldn't resolve {results.count(False)} matches.")
 
     end = datetime.datetime.now()
-    print(f"\nFinished at {end.strftime('%H:%M:%S')} after {str(end-start)}")
+    print(f"Finished at {end.strftime('%H:%M:%S')} after {str(end-start)}")
 
 
 

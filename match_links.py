@@ -6,16 +6,16 @@ from multiprocessing import Pool, Event
 
 conn = MongoClient("localhost", 27017)
 db = conn["val-db"]
+links_collection = db.links
 
 base_link = "https://www.vlr.gg/matches/results/?page="
 
-# last_visited_link = list(db.links.find(
-#         {"visited":1},
-#         sort= [("visited_at",1)],
-#         limit=1
-#     ))
-# last_visited_link = last_visited_link[0]["url"].strip("\n") if len(last_visited_link) != 0 else None
-last_visited_link = None
+last_visited_link = list(links_collection.find(
+        {"visited":1},
+        sort= [("visited_at",1)],
+        limit=1
+    ))
+last_visited_link = last_visited_link[0]["url"].strip("\n") if len(last_visited_link) != 0 else None
 
 def get_max_page():
     req = re.get(base_link + str(1))
@@ -51,4 +51,4 @@ if __name__ == "__main__":
             out.append(link_arr)
     links = [{"url":item, "visited":0, "visited_at": None} for sublist in out for item in sublist]
     print(f"{len(links)} new links found.")
-    db.test_links.insert_many(links)
+    links_collection.insert_many(links)
