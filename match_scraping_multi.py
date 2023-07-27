@@ -53,6 +53,11 @@ blank_player_stats = {
 tag = re.compile("<.*>")
 
 def chunk(iterable, chunk_size):
+    """
+        Turns an iterable into a generator that returns in chunks of chunk_size size.
+        Useful for pymongo multithreading because instantiating a client for each record is wasteful,
+        so using one client for a chunk of records is far improved.
+    """
     for i in range(0, len(iterable), chunk_size):
         yield iterable[i:i+chunk_size]
 
@@ -119,6 +124,11 @@ def get_all_sides(td):
     return attack, defense, all
 
 def scrape_match(url_record_list):
+    """
+        This is the function which is used for the multithreading process. 
+        Accepts a list of url records from the mongo database.
+        Inserts matches, games and players with IDs that can be linked together to form relationships.
+    """
     thread_conn = MongoClient("localhost", 27017)
     thread_db = thread_conn["val-db"]
 
@@ -247,13 +257,18 @@ def scrape_match(url_record_list):
 if __name__ == "__main__":
     start = datetime.datetime.now()
 
+    # make main connection to get list of links
     main_conn = MongoClient("localhost", 27017)
     main_db = main_conn["val-db"]
     urls = list(main_db.links.find({"visited":0}, projection={"url":True}))
 
+    # create Pool for using different threads
     downloader_pool = Pool(6)
+
+    # map the chunked list of urls to the scraping function
     results = downloader_pool.map(scrape_match, chunk(urls, 1000))
 
+    # count how many links could not be scraped, these will still appear as unvisited in the database.
     print(f"Couldn't resolve {results.count(False)} matches.")
 
     end = datetime.datetime.now()
